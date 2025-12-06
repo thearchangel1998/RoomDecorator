@@ -65,15 +65,32 @@
             opacity: 0; transition: opacity 0.2s;
         }
         .placed-item:hover .delete-btn { opacity: 1; }
+        
+        /* CORRECT/WRONG INDICATORS */
+        .status-badge {
+            position: absolute; top: -15px; left: 50%; transform: translateX(-50%);
+            width: 24px; height: 24px; border-radius: 50%; color: white;
+            display: flex; align-items: center; justify-content: center; font-size: 14px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2); z-index: 60;
+        }
+        .status-correct { background: #10b981; } /* Green */
+        .item-correct { filter: drop-shadow(0 0 8px #10b981) !important; }
 
-        /* GHOST ITEMS */
+        /* GHOST ITEMS (Target Position) */
         .ghost-item {
             position: absolute; display: flex; flex-direction: column; align-items: center;
             width: fit-content; transform: translate(-50%, -50%); z-index: 5;
-            opacity: 0.5; filter: grayscale(1) opacity(0.7); pointer-events: none; 
-            border: 3px dashed #4b5563; border-radius: 10px; padding: 5px; background: rgba(255,255,255,0.3);
+            pointer-events: none;
         }
-        .ghost-item i { color: #1f2937 !important; }
+        .ghost-missing {
+            opacity: 0.8; filter: grayscale(1) sepia(1) hue-rotate(-50deg) saturate(3);
+        }
+        .ghost-missing .ghost-box {
+            border: 3px dashed #ef4444; background: rgba(254, 202, 202, 0.4); border-radius: 12px; padding: 5px;
+        }
+        .ghost-correct {
+            opacity: 0; /* Hide ghosts if user got it right */
+        }
 
         /* ICONS & COLORS */
         .icon-xl { font-size: 100px; } .icon-lg { font-size: 80px; } .icon-md { font-size: 50px; } .icon-sm { font-size: 30px; }
@@ -109,22 +126,15 @@
             box-shadow: 0 2px 5px rgba(0,0,0,0.2); white-space: nowrap;
         }
 
-        /* BLUEPRINT OVERLAY */
-        .blueprint-overlay {
-            position: absolute; inset: 0; pointer-events: none;
-            border: 8px solid #3b82f6; box-sizing: border-box;
-            display: none; justify-content: center; align-items: flex-start; /* Changed to top */
-            z-index: 200; padding-top: 15px; /* Add padding from top */
+        /* RESULT POPUP */
+        .result-popup {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            background: white; padding: 2rem; border-radius: 20px; text-align: center;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.4); z-index: 200;
+            display: none; animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
         }
-        .blueprint-active { display: flex; animation: pulseBorder 2s infinite; }
-        @keyframes pulseBorder { 0% { border-color: #3b82f6; } 50% { border-color: #93c5fd; } 100% { border-color: #3b82f6; } }
-        
-        .blueprint-badge {
-            background: rgba(59, 130, 246, 0.9); color: white; font-size: 1.2rem; font-weight: 900;
-            padding: 8px 30px; border-radius: 20px; box-shadow: 0 5px 15px rgba(0,0,0,0.2);
-            pointer-events: auto; border: 2px solid white; backdrop-filter: blur(2px);
-            text-align: center;
-        }
+        .result-active { display: block; }
+        @keyframes popIn { from { transform: translate(-50%, -50%) scale(0.8); opacity: 0; } to { transform: translate(-50%, -50%) scale(1); opacity: 1; } }
 
     </style>
 </head>
@@ -164,17 +174,19 @@
                     <div class="curtain"><div class="curtain-left"></div><div class="curtain-right"></div></div>
                 </div>
                 
-                <!-- Blueprint Overlay -->
-                <div id="blueprint-border" class="blueprint-overlay">
-                    <div class="blueprint-badge">
-                        <div class="text-xs uppercase tracking-widest opacity-90 mb-1">Architect Mode</div>
-                        <i class="fas fa-eye"></i> MEMORIZE!
-                    </div>
-                </div>
-                
                 <!-- Ghost items container -->
                 <div id="ghost-container"></div>
                 <!-- Real items go here -->
+                
+                <!-- Result Popup -->
+                <div id="result-popup" class="result-popup">
+                    <div id="result-icon" class="text-6xl mb-4">🎉</div>
+                    <h2 id="result-title" class="text-2xl font-black text-gray-800 mb-2">Great Job!</h2>
+                    <p id="result-desc" class="text-gray-500 mb-6">You matched 5/6 items correctly.</p>
+                    <button onclick="closeResult()" class="bg-blue-500 text-white font-bold py-2 px-6 rounded-full hover:bg-blue-600 shadow-lg transition">
+                        Review Board
+                    </button>
+                </div>
             </div>
             
             <!-- Game Controls -->
@@ -190,14 +202,14 @@
                 </button>
                 
                 <button onclick="revealResult()" id="btn-check" class="btn-action btn-purple" disabled>
-                    <i class="fas fa-search"></i> Compare
+                    <i class="fas fa-search"></i> Check
                 </button>
             </div>
         </div>
     </div>
 
     <script>
-        // --- EXPANDED DATA ---
+        // --- DATA ---
         const furnitureData = {
             living: [
                 { id: 'sofa', name: 'Sofa', icon: 'fa-couch', color: 'color-sofa', size: 'icon-lg' },
@@ -205,83 +217,54 @@
                 { id: 'tv', name: 'TV Wall', icon: 'fa-tv', color: 'color-tv', size: 'icon-md' },
                 { id: 'plant', name: 'Floor Plant', icon: 'fa-seedling', color: 'color-plant', size: 'icon-lg' },
                 { id: 'lamp', name: 'Floor Lamp', icon: 'fa-lightbulb', color: 'color-lamp', size: 'icon-lg' },
-                { id: 'rug', name: 'Large Rug', icon: 'fa-rug', color: 'text-red-400', size: 'icon-xl' }, // Bigger rug
+                { id: 'rug', name: 'Large Rug', icon: 'fa-rug', color: 'text-red-400', size: 'icon-xl' },
                 { id: 'cat', name: 'Cat', icon: 'fa-cat', color: 'text-gray-600', size: 'icon-sm' },
                 { id: 'shelf', name: 'Bookshelf', icon: 'fa-book', color: 'text-amber-800', size: 'icon-md' },
                 { id: 'picture', name: 'Wall Picture', icon: 'fa-image', color: 'text-purple-600', size: 'icon-md' },
-                { id: 'cushion', name: 'Cushion', icon: 'fa-cloud', color: 'text-pink-400', size: 'icon-sm' }, // New
-                { id: 'book', name: 'Book', icon: 'fa-book-open', color: 'text-blue-500', size: 'icon-sm' }, // New
-                { id: 'clock', name: 'Wall Clock', icon: 'fa-clock', color: 'text-gray-700', size: 'icon-sm' } // New
+                { id: 'cushion', name: 'Cushion', icon: 'fa-cloud', color: 'text-pink-400', size: 'icon-sm' },
+                { id: 'book', name: 'Book', icon: 'fa-book-open', color: 'text-blue-500', size: 'icon-sm' },
+                { id: 'clock', name: 'Wall Clock', icon: 'fa-clock', color: 'text-gray-700', size: 'icon-sm' }
             ],
             bed: [
                 { id: 'bed', name: 'King Bed', icon: 'fa-bed', color: 'color-bed', size: 'icon-lg' },
-                { id: 'wardrobe', name: 'Wardrobe', icon: 'fa-door-closed', color: 'color-wardrobe', size: 'icon-xl' }, // Bigger
+                { id: 'wardrobe', name: 'Wardrobe', icon: 'fa-door-closed', color: 'color-wardrobe', size: 'icon-xl' },
                 { id: 'nightstand', name: 'Nightstand', icon: 'fa-archive', color: 'text-amber-700', size: 'icon-md' }, 
                 { id: 'lamp', name: 'Table Lamp', icon: 'fa-lightbulb', color: 'color-lamp', size: 'icon-sm' }, 
                 { id: 'rug', name: 'Round Rug', icon: 'fa-compact-disc', color: 'text-yellow-400', size: 'icon-lg' },
                 { id: 'mirror', name: 'Mirror', icon: 'fa-tablet-alt', color: 'text-blue-300', size: 'icon-lg' },
                 { id: 'painting', name: 'Painting', icon: 'fa-palette', color: 'text-orange-500', size: 'icon-md' },
-                { id: 'pillow', name: 'Pillow', icon: 'fa-cloud', color: 'text-white', size: 'icon-sm' }, // New (using cloud icon)
-                { id: 'laptop', name: 'Laptop', icon: 'fa-laptop', color: 'text-gray-800', size: 'icon-sm' }, // New
-                { id: 'teddy', name: 'Teddy Bear', icon: 'fa-paw', color: 'text-amber-600', size: 'icon-sm' }, // New
-                { id: 'chair', name: 'Chair', icon: 'fa-chair', color: 'text-emerald-600', size: 'icon-md' } // New
+                { id: 'pillow', name: 'Pillow', icon: 'fa-cloud', color: 'text-white', size: 'icon-sm' },
+                { id: 'laptop', name: 'Laptop', icon: 'fa-laptop', color: 'text-gray-800', size: 'icon-sm' },
+                { id: 'teddy', name: 'Teddy Bear', icon: 'fa-paw', color: 'text-amber-600', size: 'icon-sm' },
+                { id: 'chair', name: 'Chair', icon: 'fa-chair', color: 'text-emerald-600', size: 'icon-md' }
             ]
         };
 
-        // COMPLEX SCENARIOS (More items, precise layering)
         const scenarios = {
             living: [
-                // Layout 1: Cozy Reading Corner
                 [
-                    { id: 'rug', x: 450, y: 500 },
-                    { id: 'sofa', x: 450, y: 450 }, // On Rug
-                    { id: 'cushion', x: 420, y: 450 }, // On Sofa Left
-                    { id: 'cat', x: 480, y: 450 }, // On Sofa Right
-                    { id: 'table', x: 450, y: 550 }, // In front of sofa
-                    { id: 'book', x: 450, y: 540 }, // On table
-                    { id: 'lamp', x: 250, y: 400 }, // Left of sofa
-                    { id: 'shelf', x: 700, y: 350 }, // Right wall
-                    { id: 'plant', x: 750, y: 500 }, // Corner
-                    { id: 'picture', x: 450, y: 200 } // Above sofa
+                    { id: 'rug', x: 450, y: 500 }, { id: 'sofa', x: 450, y: 450 }, { id: 'cushion', x: 420, y: 450 }, 
+                    { id: 'cat', x: 480, y: 450 }, { id: 'table', x: 450, y: 550 }, { id: 'book', x: 450, y: 540 }, 
+                    { id: 'lamp', x: 250, y: 400 }, { id: 'shelf', x: 700, y: 350 }, { id: 'plant', x: 750, y: 500 }, 
+                    { id: 'picture', x: 450, y: 200 }
                 ],
-                // Layout 2: TV Focus
                 [
-                    { id: 'tv', x: 450, y: 250 }, // Wall center
-                    { id: 'shelf', x: 200, y: 300 }, // Left wall
-                    { id: 'plant', x: 700, y: 300 }, // Right corner
-                    { id: 'sofa', x: 450, y: 500 }, // Facing TV
-                    { id: 'cushion', x: 450, y: 500 }, // Middle of sofa
-                    { id: 'table', x: 450, y: 400 }, // Between TV and Sofa
-                    { id: 'rug', x: 450, y: 450 }, // Under table/sofa area
-                    { id: 'clock', x: 450, y: 150 }, // Above TV
-                    { id: 'lamp', x: 650, y: 500 } // Next to sofa
+                    { id: 'tv', x: 450, y: 250 }, { id: 'shelf', x: 200, y: 300 }, { id: 'plant', x: 700, y: 300 }, 
+                    { id: 'sofa', x: 450, y: 500 }, { id: 'cushion', x: 450, y: 500 }, { id: 'table', x: 450, y: 400 }, 
+                    { id: 'rug', x: 450, y: 450 }, { id: 'clock', x: 450, y: 150 }, { id: 'lamp', x: 650, y: 500 }
                 ]
             ],
             bed: [
-                // Layout 1: Student Room
                 [
-                    { id: 'bed', x: 450, y: 400 },
-                    { id: 'pillow', x: 450, y: 360 }, // On bed head
-                    { id: 'teddy', x: 450, y: 420 }, // On bed foot
-                    { id: 'rug', x: 250, y: 500 }, // Floor left
-                    { id: 'wardrobe', x: 750, y: 350 }, // Right wall
-                    { id: 'nightstand', x: 250, y: 380 }, // Left of bed
-                    { id: 'lamp', x: 250, y: 350 }, // On nightstand
-                    { id: 'painting', x: 450, y: 200 }, // Above bed
-                    { id: 'chair', x: 100, y: 500 }, // Corner
-                    { id: 'laptop', x: 250, y: 500 } // On rug (working on floor?) or maybe need a desk later
+                    { id: 'bed', x: 450, y: 400 }, { id: 'pillow', x: 450, y: 360 }, { id: 'teddy', x: 450, y: 420 }, 
+                    { id: 'rug', x: 250, y: 500 }, { id: 'wardrobe', x: 750, y: 350 }, { id: 'nightstand', x: 250, y: 380 }, 
+                    { id: 'lamp', x: 250, y: 350 }, { id: 'painting', x: 450, y: 200 }, { id: 'chair', x: 100, y: 500 }, 
+                    { id: 'laptop', x: 250, y: 500 }
                 ],
-                // Layout 2: Messy but organized
                 [
-                    { id: 'bed', x: 300, y: 400 }, // Shifted left
-                    { id: 'wardrobe', x: 700, y: 350 }, // Right
-                    { id: 'mirror', x: 100, y: 350 }, // Far left
-                    { id: 'rug', x: 500, y: 500 }, // Center floor
-                    { id: 'nightstand', x: 500, y: 400 }, // Right of bed
-                    { id: 'laptop', x: 500, y: 390 }, // On nightstand
-                    { id: 'lamp', x: 500, y: 370 }, // On nightstand (crowded)
-                    { id: 'painting', x: 300, y: 200 }, // Above bed
-                    { id: 'chair', x: 600, y: 500 } // Near rug
+                    { id: 'bed', x: 300, y: 400 }, { id: 'wardrobe', x: 700, y: 350 }, { id: 'mirror', x: 100, y: 350 }, 
+                    { id: 'rug', x: 500, y: 500 }, { id: 'nightstand', x: 500, y: 400 }, { id: 'laptop', x: 500, y: 390 }, 
+                    { id: 'lamp', x: 500, y: 370 }, { id: 'painting', x: 300, y: 200 }, { id: 'chair', x: 600, y: 500 }
                 ]
             ]
         };
@@ -290,7 +273,6 @@
         let nextZIndex = 100;
         let currentTargetState = []; 
 
-        // --- CORE FUNCTIONS ---
         function renderInventory() {
             const list = document.getElementById('inventory-list');
             list.innerHTML = '';
@@ -324,12 +306,12 @@
         function clearRoom() {
             document.querySelectorAll('.placed-item').forEach(e => e.remove());
             document.getElementById('ghost-container').innerHTML = '';
+            document.getElementById('result-popup').classList.remove('result-active');
             currentTargetState = [];
         }
 
         function resetUI() {
             document.getElementById('inventory-list').classList.add('inventory-locked');
-            document.getElementById('blueprint-border').classList.remove('blueprint-active');
             document.getElementById('btn-start').disabled = true;
             document.getElementById('btn-check').disabled = true;
             document.getElementById('btn-blueprint').disabled = false;
@@ -337,47 +319,30 @@
             document.getElementById('status-text').innerText = "Waiting";
         }
 
-        // --- GAME PHASE LOGIC ---
-
         function generateBlueprint() {
             clearRoom();
-            
-            // Pick a random scenario
             const possibleScenarios = scenarios[currentMode];
             const chosen = possibleScenarios[Math.floor(Math.random() * possibleScenarios.length)];
-            
             currentTargetState = JSON.parse(JSON.stringify(chosen)); 
 
-            // Place items visually - ORDER MATTERS for layering
-            // We sort by Y position generally to fake depth, but manual scenario order is usually trusted
             currentTargetState.forEach(pos => {
                 const itemData = furnitureData[currentMode].find(i => i.id === pos.id);
                 if(itemData) createItemOnCanvas(itemData, pos.x, pos.y);
             });
 
-            // UI Updates
-            document.getElementById('blueprint-border').classList.add('blueprint-active');
             document.getElementById('inventory-list').classList.add('inventory-locked');
-            
             document.getElementById('btn-blueprint').disabled = true;
             document.getElementById('btn-start').disabled = false;
             document.getElementById('btn-check').disabled = true;
-            
             document.getElementById('phase-indicator').innerText = "Step 1: Memorize";
             document.getElementById('status-text').innerText = "Architect View";
         }
 
         function startBuildPhase() {
-            // Remove visual items
             document.querySelectorAll('.placed-item').forEach(e => e.remove());
-            
-            // UI Updates
-            document.getElementById('blueprint-border').classList.remove('blueprint-active');
             document.getElementById('inventory-list').classList.remove('inventory-locked');
-            
             document.getElementById('btn-start').disabled = true;
             document.getElementById('btn-check').disabled = false;
-            
             document.getElementById('phase-indicator').innerText = "Step 2: Build";
             document.getElementById('status-text').innerText = "Builder View";
         }
@@ -385,16 +350,54 @@
         function revealResult() {
             const container = document.getElementById('ghost-container');
             container.innerHTML = '';
+            let correctCount = 0;
+            let totalItems = currentTargetState.length;
 
-            // Render ghosts to show where items SHOULD be
-            currentTargetState.forEach(pos => {
-                const itemData = furnitureData[currentMode].find(i => i.id === pos.id);
-                if(itemData) {
+            // Check each target in blueprint against placed items
+            currentTargetState.forEach(target => {
+                const itemData = furnitureData[currentMode].find(i => i.id === target.id);
+                const placedItems = Array.from(document.querySelectorAll('.placed-item')).filter(el => el.dataset.type === target.id);
+                
+                let isFound = false;
+                
+                // Find best match (closest item of same type)
+                let bestMatch = null;
+                let minDist = Infinity;
+
+                placedItems.forEach(p => {
+                    const px = parseFloat(p.style.left);
+                    const py = parseFloat(p.style.top);
+                    const dist = Math.sqrt(Math.pow(px - target.x, 2) + Math.pow(py - target.y, 2));
+                    
+                    if (dist < minDist) {
+                        minDist = dist;
+                        bestMatch = p;
+                    }
+                });
+
+                // Tolerance check (180px radius - very generous)
+                if (bestMatch && minDist < 180) {
+                    isFound = true;
+                    correctCount++;
+                    // Mark placed item as correct
+                    if (!bestMatch.querySelector('.status-badge')) {
+                        bestMatch.innerHTML += `<div class="status-badge status-correct"><i class="fas fa-check"></i></div>`;
+                        bestMatch.classList.add('item-correct');
+                    }
+                }
+
+                // Render Ghost
+                if (itemData) {
                     const el = document.createElement('div');
-                    el.className = 'ghost-item';
-                    el.style.left = pos.x + 'px';
-                    el.style.top = pos.y + 'px';
-                    el.innerHTML = `<i class="fas ${itemData.icon} ${itemData.size} ${itemData.color}"></i>`;
+                    el.className = isFound ? 'ghost-item ghost-correct' : 'ghost-item ghost-missing';
+                    el.style.left = target.x + 'px';
+                    el.style.top = target.y + 'px';
+                    el.innerHTML = `
+                        <div class="ghost-box">
+                            <i class="fas ${itemData.icon} ${itemData.size} text-red-400"></i>
+                        </div>
+                        ${!isFound ? '<div class="absolute -top-3 -right-3 text-red-500 text-xl font-bold animate-bounce">?</div>' : ''}
+                    `;
                     container.appendChild(el);
                 }
             });
@@ -402,14 +405,28 @@
             document.getElementById('inventory-list').classList.add('inventory-locked');
             document.getElementById('btn-check').disabled = true;
             document.getElementById('btn-blueprint').disabled = false;
-            
             document.getElementById('phase-indicator').innerText = "Step 3: Compare";
             document.getElementById('status-text').innerText = "Result";
+
+            // Show Result Popup
+            const percent = Math.round((correctCount / totalItems) * 100);
+            const title = percent === 100 ? "Perfect!" : (percent >= 70 ? "Great Job!" : "Keep Trying!");
+            const icon = percent === 100 ? "🏆" : (percent >= 70 ? "🎉" : "🤔");
+            
+            document.getElementById('result-icon').innerText = icon;
+            document.getElementById('result-title').innerText = title;
+            document.getElementById('result-desc').innerText = `You matched ${correctCount}/${totalItems} items correctly.`;
+            document.getElementById('result-popup').classList.add('result-active');
+        }
+
+        function closeResult() {
+            document.getElementById('result-popup').classList.remove('result-active');
         }
 
         // --- DRAG & DROP & CREATION ---
         
         function dragStart(e, itemData) {
+            if (document.getElementById('inventory-list').classList.contains('inventory-locked')) { e.preventDefault(); return; }
             e.dataTransfer.setData("type", "new");
             e.dataTransfer.setData("item", JSON.stringify(itemData));
         }
@@ -440,6 +457,7 @@
             const el = document.createElement('div');
             el.className = 'placed-item';
             el.id = 'item-' + Date.now() + Math.random();
+            el.dataset.type = itemData.id; // Important for checking!
             el.style.left = x + 'px';
             el.style.top = y + 'px';
             el.style.zIndex = nextZIndex++;
