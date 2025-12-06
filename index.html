@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Room Decorator: Teamwork Challenge</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;700;900&display=swap');
+
+        body { font-family: 'Nunito', sans-serif; background-color: #f3f4f6; height: 100vh; overflow: hidden; touch-action: none; }
+        #app { display: flex; height: 100%; }
+
+        /* SIDEBAR */
+        #sidebar { width: 300px; background: white; border-right: 1px solid #e5e7eb; display: flex; flex-direction: column; z-index: 20; box-shadow: 2px 0 10px rgba(0,0,0,0.05); }
+        #inventory-list { flex: 1; overflow-y: auto; padding: 1rem; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-content: start; }
+        
+        .inventory-item {
+            background: #f9fafb; border: 2px solid #e5e7eb; border-radius: 12px; padding: 10px;
+            cursor: grab; text-align: center; transition: all 0.2s; user-select: none;
+        }
+        .inventory-item:hover { border-color: #3b82f6; background: #eff6ff; transform: translateY(-2px); }
+        .inventory-item:active { cursor: grabbing; }
+        
+        /* Disabled Inventory */
+        .inventory-locked .inventory-item { opacity: 0.3; pointer-events: none; filter: grayscale(1); }
+
+        .item-icon { font-size: 2rem; margin-bottom: 5px; display: block; }
+        .item-name { font-size: 0.8rem; font-weight: bold; color: #4b5563; }
+
+        /* ROOM AREA */
+        #room-container { flex: 1; position: relative; background-color: #e5e7eb; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+        #room {
+            width: 900px; height: 600px; position: relative; background: white;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1); border: 8px solid #374151;
+            overflow: hidden; transition: background 0.3s;
+        }
+
+        .bg-living-room { background: linear-gradient(to bottom, #ccfbf1 0%, #ccfbf1 65%, #fde68a 65%, #fde68a 100%); }
+        .bg-bedroom { background: linear-gradient(to bottom, #fce7f3 0%, #fce7f3 65%, #bfdbfe 65%, #bfdbfe 100%); }
+
+        /* DECORATIONS */
+        .room-feature { position: absolute; pointer-events: none; }
+        .window { top: 10%; right: 10%; width: 25%; height: 40%; background: #bae6fd; border: 8px solid white; box-shadow: 0 0 0 2px #d1d5db; }
+        .window::after { content: ''; position: absolute; top: 0; left: 50%; width: 4px; height: 100%; background: white; transform: translateX(-50%); }
+        .window::before { content: ''; position: absolute; top: 50%; left: 0; width: 100%; height: 4px; background: white; transform: translateY(-50%); }
+        .curtain { top: 10%; right: 8%; width: 30%; height: 45%; border-top: 10px solid #475569; z-index: 1; }
+        .curtain-left, .curtain-right { position: absolute; top: 0; width: 30%; height: 100%; background: #fca5a5; }
+        .curtain-left { left: 0; border-radius: 0 0 50px 0; }
+        .curtain-right { right: 0; border-radius: 0 0 0 50px; }
+
+        /* PLACED ITEMS */
+        .placed-item {
+            position: absolute; cursor: grab; display: flex; flex-direction: column; align-items: center;
+            width: fit-content; transform: translate(-50%, -50%); z-index: 10;
+            filter: drop-shadow(2px 4px 6px rgba(0,0,0,0.2)); transition: top 0.3s, left 0.3s;
+        }
+        .placed-item:active { cursor: grabbing; z-index: 50; transition: none; }
+        .placed-item i { pointer-events: none; }
+        .placed-item .delete-btn {
+            position: absolute; top: -10px; right: -10px; background: red; color: white;
+            width: 20px; height: 20px; border-radius: 50%; font-size: 12px;
+            display: flex; align-items: center; justify-content: center; cursor: pointer;
+            opacity: 0; transition: opacity 0.2s;
+        }
+        .placed-item:hover .delete-btn { opacity: 1; }
+
+        /* GHOST ITEMS */
+        .ghost-item {
+            position: absolute; display: flex; flex-direction: column; align-items: center;
+            width: fit-content; transform: translate(-50%, -50%); z-index: 5;
+            opacity: 0.5; filter: grayscale(1) opacity(0.7); pointer-events: none; 
+            border: 3px dashed #4b5563; border-radius: 10px; padding: 5px; background: rgba(255,255,255,0.3);
+        }
+        .ghost-item i { color: #1f2937 !important; }
+
+        /* ICONS & COLORS */
+        .icon-xl { font-size: 100px; } .icon-lg { font-size: 80px; } .icon-md { font-size: 50px; } .icon-sm { font-size: 30px; }
+        .color-sofa { color: #f59e0b; } .color-table { color: #10b981; } .color-tv { color: #1f2937; }
+        .color-plant { color: #15803d; } .color-bed { color: #3b82f6; } .color-wardrobe { color: #7c2d12; }
+        .color-lamp { color: #facc15; }
+
+        /* CONTROLS */
+        .control-panel {
+            position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
+            display: flex; gap: 10px; z-index: 100;
+            background: white; padding: 10px 20px; border-radius: 50px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.15); border: 2px solid #e5e7eb;
+        }
+        .btn-action {
+            padding: 8px 20px; border-radius: 20px; font-weight: 800; font-size: 0.9rem;
+            cursor: pointer; transition: transform 0.1s, background 0.2s; border: none;
+            display: flex; align-items: center; gap: 8px; color: white;
+        }
+        .btn-action:hover { transform: translateY(-2px); }
+        .btn-action:active { transform: translateY(0); }
+        .btn-action:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+        .btn-blue { background: #3b82f6; } .btn-blue:hover { background: #2563eb; }
+        .btn-green { background: #10b981; } .btn-green:hover { background: #059669; }
+        .btn-purple { background: #8b5cf6; } .btn-purple:hover { background: #7c3aed; }
+
+        /* PHASE INDICATOR */
+        #phase-indicator {
+            position: absolute; top: -15px; left: 50%; transform: translateX(-50%);
+            background: #1f2937; color: white; font-size: 0.7rem; font-weight: bold;
+            padding: 4px 12px; border-radius: 12px; text-transform: uppercase;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2); white-space: nowrap;
+        }
+
+        /* BLUEPRINT OVERLAY */
+        .blueprint-overlay {
+            position: absolute; inset: 0; pointer-events: none;
+            border: 8px solid #3b82f6; box-sizing: border-box;
+            display: none; justify-content: center; align-items: center; z-index: 200;
+        }
+        .blueprint-active { display: flex; animation: pulseBorder 2s infinite; }
+        @keyframes pulseBorder { 0% { border-color: #3b82f6; } 50% { border-color: #93c5fd; } 100% { border-color: #3b82f6; } }
+        
+        .blueprint-badge {
+            background: #3b82f6; color: white; font-size: 2rem; font-weight: 900;
+            padding: 20px 60px; border-radius: 15px; box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+            transform: rotate(-5deg); pointer-events: auto; border: 4px solid white;
+        }
+
+    </style>
+</head>
+<body>
+
+    <div id="app">
+        <!-- Sidebar -->
+        <div id="sidebar">
+            <div class="p-4 border-b border-gray-200">
+                <h1 class="text-xl font-bold text-gray-800"><i class="fas fa-users text-blue-500 mr-2"></i>Team Decorator</h1>
+                <p class="text-xs text-gray-500 mt-1">Advanced Team Challenge</p>
+                
+                <div class="flex mt-4 bg-gray-100 p-1 rounded-lg">
+                    <button onclick="switchRoom('living')" id="btn-living" class="flex-1 py-1 px-2 rounded-md text-sm font-bold bg-white shadow-sm text-gray-800 transition">Living Room</button>
+                    <button onclick="switchRoom('bed')" id="btn-bed" class="flex-1 py-1 px-2 rounded-md text-sm font-bold text-gray-500 hover:bg-gray-200 transition">Bedroom</button>
+                </div>
+            </div>
+
+            <!-- Inventory -->
+            <div id="inventory-list" class="inventory-locked">
+                <!-- Items injected by JS -->
+            </div>
+
+            <div class="p-4 border-t border-gray-200 text-center">
+                <p class="text-xs text-gray-400 mb-2">Phase: <span id="status-text" class="font-bold text-blue-600">Waiting</span></p>
+                <button onclick="clearRoom()" class="w-full bg-gray-100 text-gray-500 font-bold py-2 rounded-lg hover:bg-gray-200 transition text-sm">
+                    Reset Round
+                </button>
+            </div>
+        </div>
+
+        <!-- Main Room -->
+        <div id="room-container">
+            <div id="room" class="bg-living-room" ondrop="drop(event)" ondragover="allowDrop(event)">
+                <div id="static-decor">
+                    <div class="window"></div>
+                    <div class="curtain"><div class="curtain-left"></div><div class="curtain-right"></div></div>
+                </div>
+                
+                <!-- Blueprint Overlay -->
+                <div id="blueprint-border" class="blueprint-overlay">
+                    <div class="blueprint-badge">
+                        <div class="text-sm uppercase tracking-widest opacity-80 mb-1">Architect Mode</div>
+                        <i class="fas fa-eye"></i> MEMORIZE!
+                    </div>
+                </div>
+                
+                <!-- Ghost items container -->
+                <div id="ghost-container"></div>
+                <!-- Real items go here -->
+            </div>
+            
+            <!-- Game Controls -->
+            <div class="control-panel">
+                <div id="phase-indicator">Step 1: Plan</div>
+                
+                <button onclick="generateBlueprint()" id="btn-blueprint" class="btn-action btn-blue">
+                    <i class="fas fa-random"></i> New Blueprint
+                </button>
+                
+                <button onclick="startBuildPhase()" id="btn-start" class="btn-action btn-green" disabled>
+                    <i class="fas fa-hammer"></i> Hide & Build
+                </button>
+                
+                <button onclick="revealResult()" id="btn-check" class="btn-action btn-purple" disabled>
+                    <i class="fas fa-search"></i> Compare
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- EXPANDED DATA ---
+        const furnitureData = {
+            living: [
+                { id: 'sofa', name: 'Sofa', icon: 'fa-couch', color: 'color-sofa', size: 'icon-lg' },
+                { id: 'table', name: 'Coffee Table', icon: 'fa-table', color: 'color-table', size: 'icon-md' },
+                { id: 'tv', name: 'TV Wall', icon: 'fa-tv', color: 'color-tv', size: 'icon-md' },
+                { id: 'plant', name: 'Floor Plant', icon: 'fa-seedling', color: 'color-plant', size: 'icon-lg' },
+                { id: 'lamp', name: 'Floor Lamp', icon: 'fa-lightbulb', color: 'color-lamp', size: 'icon-lg' },
+                { id: 'rug', name: 'Large Rug', icon: 'fa-rug', color: 'text-red-400', size: 'icon-xl' }, // Bigger rug
+                { id: 'cat', name: 'Cat', icon: 'fa-cat', color: 'text-gray-600', size: 'icon-sm' },
+                { id: 'shelf', name: 'Bookshelf', icon: 'fa-book', color: 'text-amber-800', size: 'icon-md' },
+                { id: 'picture', name: 'Wall Picture', icon: 'fa-image', color: 'text-purple-600', size: 'icon-md' },
+                { id: 'cushion', name: 'Cushion', icon: 'fa-cloud', color: 'text-pink-400', size: 'icon-sm' }, // New
+                { id: 'book', name: 'Book', icon: 'fa-book-open', color: 'text-blue-500', size: 'icon-sm' }, // New
+                { id: 'clock', name: 'Wall Clock', icon: 'fa-clock', color: 'text-gray-700', size: 'icon-sm' } // New
+            ],
+            bed: [
+                { id: 'bed', name: 'King Bed', icon: 'fa-bed', color: 'color-bed', size: 'icon-lg' },
+                { id: 'wardrobe', name: 'Wardrobe', icon: 'fa-door-closed', color: 'color-wardrobe', size: 'icon-xl' }, // Bigger
+                { id: 'nightstand', name: 'Nightstand', icon: 'fa-archive', color: 'text-amber-700', size: 'icon-md' }, 
+                { id: 'lamp', name: 'Table Lamp', icon: 'fa-lightbulb', color: 'color-lamp', size: 'icon-sm' }, 
+                { id: 'rug', name: 'Round Rug', icon: 'fa-compact-disc', color: 'text-yellow-400', size: 'icon-lg' },
+                { id: 'mirror', name: 'Mirror', icon: 'fa-tablet-alt', color: 'text-blue-300', size: 'icon-lg' },
+                { id: 'painting', name: 'Painting', icon: 'fa-palette', color: 'text-orange-500', size: 'icon-md' },
+                { id: 'pillow', name: 'Pillow', icon: 'fa-cloud', color: 'text-white', size: 'icon-sm' }, // New (using cloud icon)
+                { id: 'laptop', name: 'Laptop', icon: 'fa-laptop', color: 'text-gray-800', size: 'icon-sm' }, // New
+                { id: 'teddy', name: 'Teddy Bear', icon: 'fa-paw', color: 'text-amber-600', size: 'icon-sm' }, // New
+                { id: 'chair', name: 'Chair', icon: 'fa-chair', color: 'text-emerald-600', size: 'icon-md' } // New
+            ]
+        };
+
+        // COMPLEX SCENARIOS (More items, precise layering)
+        const scenarios = {
+            living: [
+                // Layout 1: Cozy Reading Corner
+                [
+                    { id: 'rug', x: 450, y: 500 },
+                    { id: 'sofa', x: 450, y: 450 }, // On Rug
+                    { id: 'cushion', x: 420, y: 450 }, // On Sofa Left
+                    { id: 'cat', x: 480, y: 450 }, // On Sofa Right
+                    { id: 'table', x: 450, y: 550 }, // In front of sofa
+                    { id: 'book', x: 450, y: 540 }, // On table
+                    { id: 'lamp', x: 250, y: 400 }, // Left of sofa
+                    { id: 'shelf', x: 700, y: 350 }, // Right wall
+                    { id: 'plant', x: 750, y: 500 }, // Corner
+                    { id: 'picture', x: 450, y: 200 } // Above sofa
+                ],
+                // Layout 2: TV Focus
+                [
+                    { id: 'tv', x: 450, y: 250 }, // Wall center
+                    { id: 'shelf', x: 200, y: 300 }, // Left wall
+                    { id: 'plant', x: 700, y: 300 }, // Right corner
+                    { id: 'sofa', x: 450, y: 500 }, // Facing TV
+                    { id: 'cushion', x: 450, y: 500 }, // Middle of sofa
+                    { id: 'table', x: 450, y: 400 }, // Between TV and Sofa
+                    { id: 'rug', x: 450, y: 450 }, // Under table/sofa area
+                    { id: 'clock', x: 450, y: 150 }, // Above TV
+                    { id: 'lamp', x: 650, y: 500 } // Next to sofa
+                ]
+            ],
+            bed: [
+                // Layout 1: Student Room
+                [
+                    { id: 'bed', x: 450, y: 400 },
+                    { id: 'pillow', x: 450, y: 360 }, // On bed head
+                    { id: 'teddy', x: 450, y: 420 }, // On bed foot
+                    { id: 'rug', x: 250, y: 500 }, // Floor left
+                    { id: 'wardrobe', x: 750, y: 350 }, // Right wall
+                    { id: 'nightstand', x: 250, y: 380 }, // Left of bed
+                    { id: 'lamp', x: 250, y: 350 }, // On nightstand
+                    { id: 'painting', x: 450, y: 200 }, // Above bed
+                    { id: 'chair', x: 100, y: 500 }, // Corner
+                    { id: 'laptop', x: 250, y: 500 } // On rug (working on floor?) or maybe need a desk later
+                ],
+                // Layout 2: Messy but organized
+                [
+                    { id: 'bed', x: 300, y: 400 }, // Shifted left
+                    { id: 'wardrobe', x: 700, y: 350 }, // Right
+                    { id: 'mirror', x: 100, y: 350 }, // Far left
+                    { id: 'rug', x: 500, y: 500 }, // Center floor
+                    { id: 'nightstand', x: 500, y: 400 }, // Right of bed
+                    { id: 'laptop', x: 500, y: 390 }, // On nightstand
+                    { id: 'lamp', x: 500, y: 370 }, // On nightstand (crowded)
+                    { id: 'painting', x: 300, y: 200 }, // Above bed
+                    { id: 'chair', x: 600, y: 500 } // Near rug
+                ]
+            ]
+        };
+
+        let currentMode = 'living';
+        let nextZIndex = 100;
+        let currentTargetState = []; 
+
+        // --- CORE FUNCTIONS ---
+        function renderInventory() {
+            const list = document.getElementById('inventory-list');
+            list.innerHTML = '';
+            furnitureData[currentMode].forEach(item => {
+                const div = document.createElement('div');
+                div.className = 'inventory-item';
+                div.draggable = true;
+                div.ondragstart = (e) => dragStart(e, item);
+                div.ontouchstart = (e) => touchStartCreate(e, item);
+                div.innerHTML = `<i class="fas ${item.icon} item-icon ${item.color}"></i><div class="item-name">${item.name}</div>`;
+                list.appendChild(div);
+            });
+        }
+
+        function switchRoom(mode) {
+            currentMode = mode;
+            document.getElementById('room').className = mode === 'living' ? 'bg-living-room' : 'bg-bedroom';
+            document.getElementById('btn-living').className = mode === 'living' ? 'flex-1 py-1 px-2 rounded-md text-sm font-bold bg-white shadow-sm text-gray-800 transition' : 'flex-1 py-1 px-2 rounded-md text-sm font-bold text-gray-500 hover:bg-gray-200 transition';
+            document.getElementById('btn-bed').className = mode === 'bed' ? 'flex-1 py-1 px-2 rounded-md text-sm font-bold bg-white shadow-sm text-gray-800 transition' : 'flex-1 py-1 px-2 rounded-md text-sm font-bold text-gray-500 hover:bg-gray-200 transition';
+            
+            const decor = document.getElementById('static-decor');
+            if (mode === 'bed') {
+                decor.innerHTML = `<div class="window" style="left:10%; height:30%; width:20%;"></div>`;
+            } else {
+                decor.innerHTML = `<div class="window"></div><div class="curtain"><div class="curtain-left"></div><div class="curtain-right"></div></div>`;
+            }
+            clearRoom();
+            resetUI();
+        }
+
+        function clearRoom() {
+            document.querySelectorAll('.placed-item').forEach(e => e.remove());
+            document.getElementById('ghost-container').innerHTML = '';
+            currentTargetState = [];
+        }
+
+        function resetUI() {
+            document.getElementById('inventory-list').classList.add('inventory-locked');
+            document.getElementById('blueprint-border').classList.remove('blueprint-active');
+            document.getElementById('btn-start').disabled = true;
+            document.getElementById('btn-check').disabled = true;
+            document.getElementById('btn-blueprint').disabled = false;
+            document.getElementById('phase-indicator').innerText = "Step 1: Plan";
+            document.getElementById('status-text').innerText = "Waiting";
+        }
+
+        // --- GAME PHASE LOGIC ---
+
+        function generateBlueprint() {
+            clearRoom();
+            
+            // Pick a random scenario
+            const possibleScenarios = scenarios[currentMode];
+            const chosen = possibleScenarios[Math.floor(Math.random() * possibleScenarios.length)];
+            
+            currentTargetState = JSON.parse(JSON.stringify(chosen)); 
+
+            // Place items visually - ORDER MATTERS for layering
+            // We sort by Y position generally to fake depth, but manual scenario order is usually trusted
+            currentTargetState.forEach(pos => {
+                const itemData = furnitureData[currentMode].find(i => i.id === pos.id);
+                if(itemData) createItemOnCanvas(itemData, pos.x, pos.y);
+            });
+
+            // UI Updates
+            document.getElementById('blueprint-border').classList.add('blueprint-active');
+            document.getElementById('inventory-list').classList.add('inventory-locked');
+            
+            document.getElementById('btn-blueprint').disabled = true;
+            document.getElementById('btn-start').disabled = false;
+            document.getElementById('btn-check').disabled = true;
+            
+            document.getElementById('phase-indicator').innerText = "Step 1: Memorize";
+            document.getElementById('status-text').innerText = "Architect View";
+        }
+
+        function startBuildPhase() {
+            // Remove visual items
+            document.querySelectorAll('.placed-item').forEach(e => e.remove());
+            
+            // UI Updates
+            document.getElementById('blueprint-border').classList.remove('blueprint-active');
+            document.getElementById('inventory-list').classList.remove('inventory-locked');
+            
+            document.getElementById('btn-start').disabled = true;
+            document.getElementById('btn-check').disabled = false;
+            
+            document.getElementById('phase-indicator').innerText = "Step 2: Build";
+            document.getElementById('status-text').innerText = "Builder View";
+        }
+
+        function revealResult() {
+            const container = document.getElementById('ghost-container');
+            container.innerHTML = '';
+
+            // Render ghosts to show where items SHOULD be
+            currentTargetState.forEach(pos => {
+                const itemData = furnitureData[currentMode].find(i => i.id === pos.id);
+                if(itemData) {
+                    const el = document.createElement('div');
+                    el.className = 'ghost-item';
+                    el.style.left = pos.x + 'px';
+                    el.style.top = pos.y + 'px';
+                    el.innerHTML = `<i class="fas ${itemData.icon} ${itemData.size} ${itemData.color}"></i>`;
+                    container.appendChild(el);
+                }
+            });
+
+            document.getElementById('inventory-list').classList.add('inventory-locked');
+            document.getElementById('btn-check').disabled = true;
+            document.getElementById('btn-blueprint').disabled = false;
+            
+            document.getElementById('phase-indicator').innerText = "Step 3: Compare";
+            document.getElementById('status-text').innerText = "Result";
+        }
+
+        // --- DRAG & DROP & CREATION ---
+        
+        function dragStart(e, itemData) {
+            e.dataTransfer.setData("type", "new");
+            e.dataTransfer.setData("item", JSON.stringify(itemData));
+        }
+        function allowDrop(e) { e.preventDefault(); }
+        
+        function drop(e) {
+            e.preventDefault();
+            if (document.getElementById('inventory-list').classList.contains('inventory-locked')) return;
+
+            const type = e.dataTransfer.getData("type");
+            const roomRect = document.getElementById('room').getBoundingClientRect();
+            const x = e.clientX - roomRect.left;
+            const y = e.clientY - roomRect.top;
+
+            if (type === "new") {
+                const itemData = JSON.parse(e.dataTransfer.getData("item"));
+                createItemOnCanvas(itemData, x, y);
+            } else if (type === "move") {
+                const id = e.dataTransfer.getData("id");
+                const el = document.getElementById(id);
+                el.style.left = x + "px";
+                el.style.top = y + "px";
+                el.style.zIndex = nextZIndex++;
+            }
+        }
+
+        function createItemOnCanvas(itemData, x, y) {
+            const el = document.createElement('div');
+            el.className = 'placed-item';
+            el.id = 'item-' + Date.now() + Math.random();
+            el.style.left = x + 'px';
+            el.style.top = y + 'px';
+            el.style.zIndex = nextZIndex++;
+            
+            el.innerHTML = `
+                <i class="fas ${itemData.icon} ${itemData.size} ${itemData.color}"></i>
+                <div class="delete-btn" onclick="this.parentElement.remove()">×</div>
+            `;
+
+            el.draggable = true;
+            el.ondragstart = function(ev) {
+                if (document.getElementById('inventory-list').classList.contains('inventory-locked')) {
+                    ev.preventDefault(); return;
+                }
+                ev.dataTransfer.setData("type", "move");
+                ev.dataTransfer.setData("id", el.id);
+            };
+            el.ontouchstart = touchStartMove;
+            document.getElementById('room').appendChild(el);
+        }
+
+        // --- TOUCH ---
+        let activeTouchEl = null;
+        function touchStartCreate(e, itemData) {
+            e.preventDefault();
+            if (document.getElementById('inventory-list').classList.contains('inventory-locked')) return;
+            const room = document.getElementById('room');
+            createItemOnCanvas(itemData, room.offsetWidth/2 + (Math.random()*40-20), room.offsetHeight/2);
+        }
+        function touchStartMove(e) {
+            if (document.getElementById('inventory-list').classList.contains('inventory-locked')) return;
+            e.preventDefault();
+            activeTouchEl = e.currentTarget;
+            activeTouchEl.style.zIndex = nextZIndex++;
+            document.addEventListener('touchmove', touchMove, {passive: false});
+            document.addEventListener('touchend', touchEnd);
+        }
+        function touchMove(e) {
+            e.preventDefault();
+            if (!activeTouchEl) return;
+            const touch = e.touches[0];
+            const roomRect = document.getElementById('room').getBoundingClientRect();
+            activeTouchEl.style.left = (touch.clientX - roomRect.left) + 'px';
+            activeTouchEl.style.top = (touch.clientY - roomRect.top) + 'px';
+        }
+        function touchEnd(e) {
+            document.removeEventListener('touchmove', touchMove);
+            document.removeEventListener('touchend', touchEnd);
+            activeTouchEl = null;
+        }
+
+        // Init
+        renderInventory();
+        resetUI();
+
+    </script>
+</body>
+</html>
